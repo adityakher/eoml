@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eoml"
+version = "0.1.0"
+description = "Land cover classification and NDVI analysis on Sentinel-2 imagery"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchgeo>=0.5",
+    "kornia>=0.7",
+    "numpy",
+    "matplotlib",
+    "scikit-learn",
+    "grad-cam>=1.4",
+    "pystac-client>=0.7",
+    "planetary-computer>=1.0",
+    "rioxarray>=0.15",
+    "xarray",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+eoml-train = "eoml.cli:train_main"
+eoml-classify = "eoml.cli:classify_main"
+eoml-ndvi = "eoml.cli:ndvi_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

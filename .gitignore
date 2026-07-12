@@ -1,10 +1,22 @@
-agentic_satellite_exercise.ipynb
-agentic_satellite_exercise.py
-agentic_satellite_extra.ipynb
-eurosat.ipynb
-eurosat.py
-ndvi.ipynb
-satellite_agent.py
-studyplan.ipynb
-test.ipynb
-test.py
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editor
+.vscode/
+
+# Outputs
+artifacts/
+*.pth
+*.png
+
+# Test caches
+.pytest_cache/
