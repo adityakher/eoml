@@ -27,7 +27,7 @@ src/eoml/
 ├── indices.py        # NDVI + threshold classification
 ├── viz.py            # confusion matrix, Grad-CAM, NDVI and class-map plots
 └── cli.py            # entry points
-notebooks/            # original exploratory notebooks
+notebooks/            # executed walkthrough of the full pipeline
 tests/                # unit tests (no network/GPU needed)
 ```
 
