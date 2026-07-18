@@ -69,6 +69,15 @@ eoml-ndvi --bbox -120.5 36.5 -120.0 37.0 --datetime 2024-06-01/2024-06-30 ^
   everything onto the 10 m grid of the reference band (B04).
 - **Normalization**: training and inference share the same `Normalize(0, 10000)`
   preprocessing from `eoml.data.eurosat.get_preprocess()`.
+- **Scene selection**: STAC returns any granule intersecting the bbox — at
+  swath edges that can be a sliver of nodata-padded scene. `search_scenes()`
+  ranks by bbox coverage first, cloud cover second.
+- **Radiometric offset**: L2A scenes with processing baseline >= 04.00
+  (post-Jan 2022) carry a +1000 DN offset that EuroSAT-era data lacks;
+  `load_band()` subtracts it so the classifier and NDVI see pre-offset values.
+
+EuroSAT downloads to `~/.cache/eoml/eurosat` by default (override with
+`--root` or `get_datasets(root=...)`).
 
 ## Tests
 

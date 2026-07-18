@@ -19,6 +19,7 @@ dependencies = [
     "pystac-client>=0.7",
     "planetary-computer>=1.0",
     "rioxarray>=0.15",
+    "shapely>=2.0",
     "xarray",
 ]
 

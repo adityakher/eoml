@@ -5,6 +5,7 @@ import planetary_computer
 import pystac_client
 import rioxarray
 import xarray as xr
+from shapely.geometry import box, shape
 
 from eoml.data.eurosat import EUROSAT_BANDS
 
@@ -15,13 +16,42 @@ COLLECTION = "sentinel-2-l2a"
 # correction. Inference zero-fills that channel (see eoml.inference).
 L2A_BANDS = tuple(b for b in EUROSAT_BANDS if b != "B10")
 
+# Radiometric offset added to L2A DN values in processing baseline >= 04.00
+# (scenes processed after Jan 2022). EuroSAT-era data predates it.
+BOA_OFFSET = 1000
+
 
 def open_catalog() -> pystac_client.Client:
     return pystac_client.Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
 
 
+def bbox_coverage(item, bbox) -> float:
+    """Fraction of bbox covered by the item's footprint (0..1)."""
+    aoi = box(*bbox)
+    return shape(item.geometry).intersection(aoi).area / aoi.area
+
+
+def rank_scenes(items, bbox) -> list:
+    """Best scene first: fullest bbox coverage, then lowest cloud cover.
+
+    STAC returns any intersecting granule; at swath edges a scene may cover
+    only a sliver of the bbox, and the nodata fill would dominate analysis.
+    Coverage is rounded so near-identical footprints tie and cloud cover
+    decides.
+    """
+    return sorted(
+        items,
+        key=lambda item: (
+            -round(bbox_coverage(item, bbox), 2),
+            item.properties["eo:cloud_cover"],
+        ),
+    )
+
+
 def search_scenes(bbox, datetime, max_cloud_cover: float = 20.0, catalog=None) -> list:
-    """Return Sentinel-2 L2A items intersecting bbox, least cloudy first.
+    """Return Sentinel-2 L2A items intersecting bbox, best first.
+
+    Ranked by bbox coverage, then cloud cover (see rank_scenes).
 
     Args:
         bbox: (west, south, east, north) in WGS84 lon/lat.
@@ -35,12 +65,28 @@ def search_scenes(bbox, datetime, max_cloud_cover: float = 20.0, catalog=None) -
         datetime=datetime,
         query={"eo:cloud_cover": {"lt": max_cloud_cover}},
     )
-    items = list(search.item_collection())
-    return sorted(items, key=lambda item: item.properties["eo:cloud_cover"])
+    return rank_scenes(search.item_collection(), bbox)
+
+
+def harmonize_to_eurosat_range(da: xr.DataArray, item) -> xr.DataArray:
+    """Remove the +1000 BOA offset from baseline >= 04.00 scenes.
+
+    Keeps DN values on the same scale as EuroSAT-era products, which the
+    classifier was trained on, and keeps NDVI uncompressed. Nodata (DN 0)
+    and negative reflectances both clip back to 0.
+    """
+    baseline = item.properties.get("s2:processing_baseline")
+    if baseline is None or float(baseline) < 4.0:
+        return da
+    # Cast before subtracting: the raw data is uint16 and would wrap around.
+    return (da.astype(np.int32) - BOA_OFFSET).clip(min=0)
 
 
 def load_band(item, band: str, bbox=None) -> xr.DataArray:
-    """Load a single band asset, optionally clipped to a WGS84 bbox."""
+    """Load a single band asset, optionally clipped to a WGS84 bbox.
+
+    Values are harmonized to the pre-offset (EuroSAT-era) DN range.
+    """
     raster = rioxarray.open_rasterio(item.assets[band].href)
     # open_rasterio is typed DataArray | Dataset | list[Dataset]; a
     # single-band COG asset always yields a DataArray.
@@ -48,7 +94,7 @@ def load_band(item, band: str, bbox=None) -> xr.DataArray:
     da = raster.squeeze("band", drop=True)
     if bbox is not None:
         da = da.rio.clip_box(*bbox, crs="EPSG:4326")
-    return da
+    return harmonize_to_eurosat_range(da, item)
 
 
 def load_scene(item, bands=L2A_BANDS, bbox=None, reference_band: str = "B04") -> xr.DataArray:

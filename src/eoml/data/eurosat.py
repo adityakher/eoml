@@ -1,7 +1,7 @@
 """EuroSAT dataset access, dataloaders, and transforms."""
 
-import os
-import tempfile
+import shutil
+from pathlib import Path
 
 import kornia.augmentation as K
 from torch.utils.data import DataLoader
@@ -25,7 +25,24 @@ NUM_CLASSES = len(CLASS_NAMES)
 
 
 def default_root() -> str:
-    return os.path.join(tempfile.gettempdir(), "pytorch")
+    # Durable, unlike the system temp dir: Windows/Linux cleanup tools can
+    # reap temp files while leaving the directory tree, which corrupts the
+    # dataset cache (see _clear_stale_extraction).
+    return str(Path.home() / ".cache" / "eoml" / "eurosat")
+
+
+def _clear_stale_extraction(root: str) -> None:
+    """Remove a partially deleted EuroSAT extraction so torchgeo re-downloads.
+
+    torchgeo only checks that the extraction directory exists, not that it
+    has contents; a cache where the images were deleted but the tree
+    survived would otherwise fail with an opaque FileNotFoundError deep in
+    torchvision. Only removes the tree when it holds zero images, so intact
+    data is never touched.
+    """
+    extraction = Path(root, EuroSAT.base_dir)
+    if extraction.is_dir() and not any(extraction.rglob("*.tif")):
+        shutil.rmtree(extraction)
 
 
 def get_preprocess():
@@ -42,6 +59,7 @@ def get_augment():
 
 def get_datasets(root: str | None = None, download: bool = True) -> dict:
     root = root or default_root()
+    _clear_stale_extraction(root)
     return {
         split: EuroSAT(root, split=split, download=download)
         for split in ("train", "val", "test")

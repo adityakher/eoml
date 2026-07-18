@@ -50,7 +50,7 @@ def train_main(argv=None) -> None:
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=1e-2)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--root", default=None, help="EuroSAT data root (default: system temp)")
+    parser.add_argument("--root", default=None, help="EuroSAT data root (default: ~/.cache/eoml/eurosat)")
     parser.add_argument("--checkpoint", default="artifacts/eurosat_resnet18.pth")
     parser.add_argument(
         "--confusion-matrix", default=None, help="Optional path to save a test-set confusion matrix PNG"
