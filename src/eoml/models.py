@@ -18,6 +18,9 @@ def create_classifier(num_classes: int = NUM_CLASSES, pretrained: bool = True) -
     # in_chans must be explicit: torchgeo only infers 13 channels from the
     # weights metadata, and load_classifier() builds without weights.
     model = resnet18(weights, in_chans=len(EUROSAT_BANDS))
+    # timm types `fc` as a generic Module (it can be an Identity in other
+    # configs); here it is always a Linear head.
+    assert isinstance(model.fc, nn.Linear)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     return model
 

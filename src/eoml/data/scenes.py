@@ -41,7 +41,11 @@ def search_scenes(bbox, datetime, max_cloud_cover: float = 20.0, catalog=None) -
 
 def load_band(item, band: str, bbox=None) -> xr.DataArray:
     """Load a single band asset, optionally clipped to a WGS84 bbox."""
-    da = rioxarray.open_rasterio(item.assets[band].href).squeeze("band", drop=True)
+    raster = rioxarray.open_rasterio(item.assets[band].href)
+    # open_rasterio is typed DataArray | Dataset | list[Dataset]; a
+    # single-band COG asset always yields a DataArray.
+    assert isinstance(raster, xr.DataArray)
+    da = raster.squeeze("band", drop=True)
     if bbox is not None:
         da = da.rio.clip_box(*bbox, crs="EPSG:4326")
     return da
