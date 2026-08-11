@@ -6,6 +6,8 @@ rasters of arbitrary size): order the bands, zero-fill B10, tile into
 chips, classify, and reassemble a georeferenced class map.
 """
 
+from typing import Literal, overload
+
 import numpy as np
 import rioxarray  # noqa: F401  (registers the .rio accessor)
 import torch
@@ -40,6 +42,32 @@ def _chip_map(grid, y, x, crs, name):
     return da
 
 
+@overload
+def classify_scene(
+    model,
+    scene: xr.DataArray,
+    device: str = "cpu",
+    chip_size: int = CHIP_SIZE,
+    batch_size: int = 64,
+    preprocess=None,
+    *,
+    return_confidence: Literal[False] = False,
+) -> xr.DataArray: ...
+
+
+@overload
+def classify_scene(
+    model,
+    scene: xr.DataArray,
+    device: str = "cpu",
+    chip_size: int = CHIP_SIZE,
+    batch_size: int = 64,
+    preprocess=None,
+    *,
+    return_confidence: Literal[True],
+) -> tuple[xr.DataArray, xr.DataArray]: ...
+
+
 @torch.no_grad()
 def classify_scene(
     model,
@@ -48,6 +76,7 @@ def classify_scene(
     chip_size: int = CHIP_SIZE,
     batch_size: int = 64,
     preprocess=None,
+    *,
     return_confidence: bool = False,
 ) -> "xr.DataArray | tuple[xr.DataArray, xr.DataArray]":
     """Tile a scene into chips, classify each, and return a class map.

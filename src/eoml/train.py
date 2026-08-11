@@ -1,5 +1,8 @@
 """Training and evaluation loops for the EuroSAT classifier."""
 
+from typing import Literal, overload
+
+import numpy as np
 import torch
 from torch import nn, optim
 
@@ -40,8 +43,20 @@ def evaluate(model, dataloader, device, preprocess=None) -> float:
     return correct / len(dataloader.dataset)
 
 
+@overload
+def predict(
+    model, dataloader, device, preprocess=None, *, return_confidence: Literal[False] = False
+) -> tuple[np.ndarray, np.ndarray]: ...
+
+
+@overload
+def predict(
+    model, dataloader, device, preprocess=None, *, return_confidence: Literal[True]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+
+
 @torch.no_grad()
-def predict(model, dataloader, device, preprocess=None, return_confidence=False):
+def predict(model, dataloader, device, preprocess=None, *, return_confidence=False):
     """Return (labels, predictions) as numpy arrays over a dataloader.
 
     With return_confidence=True, also returns a per-sample confidence array:
