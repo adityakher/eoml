@@ -45,6 +45,12 @@ def _ensure_parent(path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
 
 
+def _with_suffix(path: str, suffix: str) -> str:
+    """artifacts/class_map.png + '_confidence' -> artifacts/class_map_confidence.png"""
+    p = Path(path)
+    return str(p.with_name(p.stem + suffix + p.suffix))
+
+
 def train_main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Train the EuroSAT land cover classifier.")
     parser.add_argument("--epochs", type=int, default=3)
@@ -94,6 +100,18 @@ def classify_main(argv=None) -> None:
     parser.add_argument("--checkpoint", default="artifacts/eurosat_resnet18.pth")
     parser.add_argument("--output", default="artifacts/class_map.png")
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument(
+        "--confidence",
+        action="store_true",
+        help="Also report per-chip confidence: hatch low-confidence chips on the "
+        "class map and save a confidence heatmap alongside it.",
+    )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.5,
+        help="Max softmax probability below this is flagged low confidence (with --confidence).",
+    )
     args = parser.parse_args(argv)
 
     from eoml import inference, models, viz
@@ -104,11 +122,33 @@ def classify_main(argv=None) -> None:
     print("Loading scene bands (this may take a while)...")
     scene = scenes.load_scene(item, bbox=args.bbox)
     model = models.load_classifier(args.checkpoint, device)
-    class_map = inference.classify_scene(model, scene, device, batch_size=args.batch_size)
 
     _ensure_parent(args.output)
-    viz.plot_class_map(class_map, title=f"Land cover — {item.id}", save_path=args.output)
+    if not args.confidence:
+        class_map = inference.classify_scene(model, scene, device, batch_size=args.batch_size)
+        viz.plot_class_map(class_map, title=f"Land cover — {item.id}", save_path=args.output)
+        print(f"Saved class map to {args.output}")
+        return
+
+    class_map, confidence = inference.classify_scene(
+        model, scene, device, batch_size=args.batch_size, return_confidence=True
+    )
+    viz.plot_class_map(
+        class_map,
+        confidence=confidence,
+        low_conf_threshold=args.confidence_threshold,
+        title=f"Land cover — {item.id}",
+        save_path=args.output,
+    )
+    conf_path = _with_suffix(args.output, "_confidence")
+    viz.plot_confidence_map(confidence, title=f"Confidence — {item.id}", save_path=conf_path)
+    low_frac = float((confidence.values < args.confidence_threshold).mean())
     print(f"Saved class map to {args.output}")
+    print(f"Saved confidence map to {conf_path}")
+    print(
+        f"Low-confidence chips (MSP < {args.confidence_threshold:g}): "
+        f"{low_frac:.0%} of {confidence.size}"
+    )
 
 
 def ndvi_main(argv=None) -> None:

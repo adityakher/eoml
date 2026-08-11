@@ -41,17 +41,34 @@ def evaluate(model, dataloader, device, preprocess=None) -> float:
 
 
 @torch.no_grad()
-def predict(model, dataloader, device, preprocess=None):
-    """Return (labels, predictions) as numpy arrays over a dataloader."""
+def predict(model, dataloader, device, preprocess=None, return_confidence=False):
+    """Return (labels, predictions) as numpy arrays over a dataloader.
+
+    With return_confidence=True, also returns a per-sample confidence array:
+    the maximum softmax probability (MSP) of the predicted class. This is the
+    same quantity classify_scene reports per chip, so the EuroSAT test set and
+    a real scene can be placed on one confidence scale -- e.g. an MSP histogram,
+    the standard baseline for spotting out-of-distribution or miscalibrated
+    predictions. Arrays are in dataloader order, so labels, predictions, and
+    confidence stay aligned (letting confidence be split by correct vs wrong).
+    """
     model.eval()
-    all_labels, all_preds = [], []
+    all_labels, all_preds, all_confs = [], [], []
     for batch in dataloader:
         x = batch["image"].to(device)
         if preprocess is not None:
             x = preprocess(x)
-        all_preds.append(model(x).argmax(1).cpu())
+        logits = model(x)
+        all_preds.append(logits.argmax(1).cpu())
         all_labels.append(batch["label"])
-    return torch.cat(all_labels).numpy(), torch.cat(all_preds).numpy()
+        if return_confidence:
+            all_confs.append(logits.softmax(1).max(1).values.cpu())
+
+    labels = torch.cat(all_labels).numpy()
+    preds = torch.cat(all_preds).numpy()
+    if not return_confidence:
+        return labels, preds
+    return labels, preds, torch.cat(all_confs).numpy()
 
 
 def fit(model, dataloaders, device, epochs: int = 3, lr: float = 1e-2, preprocess=None, augment=None):

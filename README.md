@@ -61,6 +61,10 @@ eoml-ndvi --bbox -120.5 36.5 -120.0 37.0 --datetime 2024-06-01/2024-06-30 ^
 
 ## Notes on the EuroSAT ↔ L2A gap
 
+EuroSAT's training chips are L1C; served scenes are L2A. Most of the resulting
+differences are corrected in code (below); the largest radiometric one is left
+as a documented systematic.
+
 - **B10**: EuroSAT chips come from L1C products (13 bands); Planetary Computer
   serves L2A, where B10 (cirrus) is consumed by atmospheric correction.
   Inference zero-fills that channel — B10 is near zero over clear land, so this
@@ -75,6 +79,19 @@ eoml-ndvi --bbox -120.5 36.5 -120.0 37.0 --datetime 2024-06-01/2024-06-30 ^
 - **Radiometric offset**: L2A scenes with processing baseline >= 04.00
   (post-Jan 2022) carry a +1000 DN offset that EuroSAT-era data lacks;
   `load_band()` subtracts it so the classifier and NDVI see pre-offset values.
+- **TOA vs BOA reflectance (uncorrected)**: EuroSAT's L1C chips are
+  top-of-atmosphere reflectance; L2A is bottom-of-atmosphere (surface)
+  reflectance, with Sen2Cor having removed the atmospheric path radiance the
+  training data still carries. This is the largest radiometric difference
+  between the two: on the order of hundreds of DN in the blue and visible bands
+  (against the B10 zero-fill's ~0.001 normalized perturbation), tapering toward
+  the NIR/SWIR, and it leaves served scenes darker than the model's training
+  inputs, most so in the blue. It is **not** corrected here; an on-footprint fix
+  would need L1C for the same scene from a second catalog (Element84 earth-search
+  or the Copernicus Data Space). Left as a known systematic, it is a likely
+  contributor to the confidence shift the walkthrough shows on real scenes.
+  (NDVI is computed directly on L2A surface reflectance, so it is unaffected by
+  this train/serve mismatch.)
 
 EuroSAT downloads to `~/.cache/eoml/eurosat` by default (override with
 `--root` or `get_datasets(root=...)`).
