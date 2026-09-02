@@ -65,7 +65,7 @@ def plot_ndvi_analysis(ndvi_da, veg_classes, title="Sentinel-2 NDVI Analysis", s
     fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
     im = axes[0].imshow(ndvi_da.values, cmap="RdYlGn", vmin=-0.2, vmax=0.8)
-    axes[0].set_title("NDVI — Vegetation Health")
+    axes[0].set_title("Normalized Difference Vegetation Index")
     fig.colorbar(im, ax=axes[0], label="NDVI", shrink=0.8)
 
     n_classes = len(NDVI_CLASS_LABELS)
