@@ -33,22 +33,21 @@ eoml-ndvi --bbox -120.5 36.6 -120.35 36.7 --datetime 2024-06-01/2024-06-30 --out
 ```
 
 
-### Module Overview
-`src/eoml/data/eurosat.py`: EuroSAT datasets, dataloaders, transforms, and band/class constants.
-
-`src/eoml/data/scenes.py`: STAC search and scene loading (Planetary Computer, Sentinel-2 L2A), ranking granules by bbox coverage then cloud cover and handling the L2A radiometric offset.
-
-`src/eoml/models.py`: classifier construction and checkpoint save/load.
-
-`src/eoml/train.py`: training and evaluation loops, with optional per-sample confidence.
-
-`src/eoml/inference.py`: the scene → chips → georeferenced class map bridge, per-chip confidence, and aggregation of NDVI onto the classifier's chip grid.
-
-`src/eoml/indices.py`: NDVI and threshold-based vegetation classification.
-
-`src/eoml/viz.py`: confusion matrix, Grad-CAM, NDVI, class-map, confidence, and per-chip scatter plots.
-
-`src/eoml/cli.py`: command-line entry points (`eoml-train`, `eoml-classify`, `eoml-ndvi`).
+### Layout
+```
+src/eoml/
+├── data/
+│   ├── eurosat.py    # EuroSAT datasets, dataloaders, transforms, band/class constants
+│   └── scenes.py     # STAC search + scene loading (Planetary Computer, Sentinel-2 L2A)
+├── models.py         # classifier construction, checkpoint save/load
+├── train.py          # training/evaluation loops (with optional per-sample confidence)
+├── inference.py      # scene → chips → georeferenced class map; per-chip confidence; NDVI-on-chip-grid
+├── indices.py        # NDVI + threshold classification
+├── viz.py            # confusion matrix, Grad-CAM, NDVI, class-map, confidence, scatter plots
+└── cli.py            # entry points (eoml-train, eoml-classify, eoml-ndvi)
+notebooks/            # tutorial walkthrough of the full pipeline
+tests/                # unit tests (no network/GPU needed)
+```
 
 
 ### Tutorial
@@ -67,6 +66,12 @@ https://adityakher.com/eoml.html
 2. A. J. Stewart, C. Robinson, I. A. Corley, A. Ortiz, J. M. Lavista Ferres, and A. Banerjee, "TorchGeo: Deep Learning With Geospatial Data," in *Proc. 30th Int. Conf. on Advances in Geographic Information Systems (SIGSPATIAL '22)*, 2022, doi: [10.1145/3557915.3560953](https://doi.org/10.1145/3557915.3560953).
 3. K. He, H. Fan, Y. Wu, S. Xie, and R. Girshick, "Momentum Contrast for Unsupervised Visual Representation Learning," in *IEEE/CVF Conf. on Computer Vision and Pattern Recognition (CVPR)*, 2020, arXiv: [1911.05722](https://arxiv.org/abs/1911.05722).
 4. D. Hendrycks and K. Gimpel, "A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks," in *Int. Conf. on Learning Representations (ICLR)*, 2017, arXiv: [1610.02136](https://arxiv.org/abs/1610.02136).
+
+
+### Tests
+```bash
+pytest
+```
 
 
 ### License
