@@ -1,103 +1,73 @@
 # eoml
 
-Land cover classification and NDVI analysis on Sentinel-2 imagery.
+This project develops a Python framework for applying a benchmark-trained land cover classifier to operational Sentinel-2 imagery and characterizing how far its accuracy transfers off the benchmark. The framework fine-tunes a ResNet-18 (Sentinel-2 MoCo-pretrained weights, via torchgeo) on the ten-class EuroSAT dataset, then runs the trained model over full Sentinel-2 Level-2A scenes retrieved from the Microsoft Planetary Computer: bands are harmonized to the EuroSAT radiometric and spectral convention, tiled into 64×64 chips, classified with per-chip confidence, and reassembled into a georeferenced land cover map. An independent NDVI computation on the same scene provides a physics-based second opinion, and each chip's maximum softmax probability provides an out-of-distribution signal. The model can be used to produce land cover, NDVI, and per-chip confidence maps over arbitrary scenes, and to compare the learned and physical views chip by chip. The project is motivated by the gap between benchmark accuracy and operational reliability that governs whether a curated-dataset classifier can be trusted on real sensor feeds.
 
-Two pieces, one scene-acquisition path:
+[Full study writeup.](https://adityakher.com/eoml.html)
 
-- **Land cover classifier** — a ResNet-18 (Sentinel-2 MoCo pretrained weights,
-  via torchgeo) fine-tuned on EuroSAT's 10 land cover classes.
-- **NDVI analysis** — vegetation health maps from B04/B08 of any Sentinel-2 L2A
-  scene, retrieved from the Microsoft Planetary Computer STAC API.
 
-The bridge between them ([src/eoml/inference.py](src/eoml/inference.py)) runs
-the trained classifier over arbitrary scenes: bands are resampled to a common
-10 m grid, ordered to match EuroSAT, tiled into 64x64 chips, classified, and
-reassembled into a georeferenced class map.
-
-## Layout
-
-```
-src/eoml/
-├── data/
-│   ├── eurosat.py    # EuroSAT datasets, dataloaders, transforms, band/class constants
-│   └── scenes.py     # STAC search + scene loading (Planetary Computer, Sentinel-2 L2A)
-├── models.py         # classifier construction, checkpoint save/load
-├── train.py          # training/evaluation loops
-├── inference.py      # scene → chips → georeferenced class map
-├── indices.py        # NDVI + threshold classification
-├── viz.py            # confusion matrix, Grad-CAM, NDVI and class-map plots
-└── cli.py            # entry points
-notebooks/            # executed walkthrough of the full pipeline
-tests/                # unit tests (no network/GPU needed)
-```
-
-## Install
-
-```sh
+### Installation
+```bash
 pip install -e .[dev]
 ```
 
-## Usage
 
-Train the classifier (downloads EuroSAT on first run, saves a checkpoint):
+### Example Usage
+The command-line interface trains the classifier and runs both analyses on any scene.
 
-```sh
+Train the classifier (downloads EuroSAT on first run to `~/.cache/eoml/eurosat`, override with `--root`; saves a checkpoint):
+
+```bash
 eoml-train --epochs 3 --checkpoint artifacts/eurosat_resnet18.pth
 ```
 
-Classify land cover in an arbitrary Sentinel-2 scene:
+Classify land cover in an arbitrary Sentinel-2 scene. The `--confidence` flag hatches low-confidence chips on the class map and saves a confidence map alongside it:
 
-```sh
-eoml-classify --bbox -120.5 36.5 -120.0 37.0 --datetime 2024-06-01/2024-06-30 ^
-    --checkpoint artifacts/eurosat_resnet18.pth --output artifacts/class_map.png
+```bash
+eoml-classify --bbox -120.5 36.6 -120.35 36.7 --datetime 2024-06-01/2024-06-30 --checkpoint artifacts/eurosat_resnet18.pth --output artifacts/class_map.png --confidence
 ```
 
 NDVI analysis of the same area:
 
-```sh
-eoml-ndvi --bbox -120.5 36.5 -120.0 37.0 --datetime 2024-06-01/2024-06-30 ^
-    --output artifacts/ndvi_analysis.png
+```bash
+eoml-ndvi --bbox -120.5 36.6 -120.35 36.7 --datetime 2024-06-01/2024-06-30 --output artifacts/ndvi_analysis.png
 ```
 
-## Notes on the EuroSAT ↔ L2A gap
 
-EuroSAT's training chips are L1C; served scenes are L2A. Most of the resulting
-differences are corrected in code (below); the largest radiometric one is left
-as a documented systematic.
+### Module Overview
+`src/eoml/data/eurosat.py`: EuroSAT datasets, dataloaders, transforms, and band/class constants.
 
-- **B10**: EuroSAT chips come from L1C products (13 bands); Planetary Computer
-  serves L2A, where B10 (cirrus) is consumed by atmospheric correction.
-  Inference zero-fills that channel — B10 is near zero over clear land, so this
-  is a mild domain shift rather than a hard break.
-- **Resolution**: L2A bands arrive at 10/20/60 m; `load_scene()` resamples
-  everything onto the 10 m grid of the reference band (B04).
-- **Normalization**: training and inference share the same `Normalize(0, 10000)`
-  preprocessing from `eoml.data.eurosat.get_preprocess()`.
-- **Scene selection**: STAC returns any granule intersecting the bbox — at
-  swath edges that can be a sliver of nodata-padded scene. `search_scenes()`
-  ranks by bbox coverage first, cloud cover second.
-- **Radiometric offset**: L2A scenes with processing baseline >= 04.00
-  (post-Jan 2022) carry a +1000 DN offset that EuroSAT-era data lacks;
-  `load_band()` subtracts it so the classifier and NDVI see pre-offset values.
-- **TOA vs BOA reflectance (uncorrected)**: EuroSAT's L1C chips are
-  top-of-atmosphere reflectance; L2A is bottom-of-atmosphere (surface)
-  reflectance, with Sen2Cor having removed the atmospheric path radiance the
-  training data still carries. This is the largest radiometric difference
-  between the two: on the order of hundreds of DN in the blue and visible bands
-  (against the B10 zero-fill's ~0.001 normalized perturbation), tapering toward
-  the NIR/SWIR, and it leaves served scenes darker than the model's training
-  inputs, most so in the blue. It is **not** corrected here; an on-footprint fix
-  would need L1C for the same scene from a second catalog (Element84 earth-search
-  or the Copernicus Data Space). Left as a known systematic, it is a likely
-  contributor to the confidence shift the walkthrough shows on real scenes.
-  (NDVI is computed directly on L2A surface reflectance, so it is unaffected by
-  this train/serve mismatch.)
+`src/eoml/data/scenes.py`: STAC search and scene loading (Planetary Computer, Sentinel-2 L2A), ranking granules by bbox coverage then cloud cover and handling the L2A radiometric offset.
 
-EuroSAT downloads to `~/.cache/eoml/eurosat` by default (override with
-`--root` or `get_datasets(root=...)`).
+`src/eoml/models.py`: classifier construction and checkpoint save/load.
 
-## Tests
+`src/eoml/train.py`: training and evaluation loops, with optional per-sample confidence.
 
-```sh
-pytest
-```
+`src/eoml/inference.py`: the scene → chips → georeferenced class map bridge, per-chip confidence, and aggregation of NDVI onto the classifier's chip grid.
+
+`src/eoml/indices.py`: NDVI and threshold-based vegetation classification.
+
+`src/eoml/viz.py`: confusion matrix, Grad-CAM, NDVI, class-map, confidence, and per-chip scatter plots.
+
+`src/eoml/cli.py`: command-line entry points (`eoml-train`, `eoml-classify`, `eoml-ndvi`).
+
+
+### Tutorial
+A [tutorial notebook](notebooks/tutorial.ipynb) is included in this repository and walks through training and evaluating the classifier, retrieving a Sentinel-2 scene, and running the classifier and NDVI on two contrasting scenes — an agricultural scene in California's Central Valley and the Mediterranean coast near Malibu — with per-chip confidence throughout.
+
+
+### Citation
+If you reference this work, please cite:
+
+A. Kher, "Benchmark Land-Cover Classification on Operational Sentinel-2 Imagery," 2026.
+https://adityakher.com/eoml.html
+
+
+### References
+1. P. Helber, B. Bischke, A. Dengel, and D. Borth, "EuroSAT: A Novel Dataset and Deep Learning Benchmark for Land Use and Land Cover Classification," in *IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing*, vol. 12, no. 7, pp. 2217-2226, 2019, doi: [10.1109/JSTARS.2019.2918242](https://doi.org/10.1109/JSTARS.2019.2918242).
+2. A. J. Stewart, C. Robinson, I. A. Corley, A. Ortiz, J. M. Lavista Ferres, and A. Banerjee, "TorchGeo: Deep Learning With Geospatial Data," in *Proc. 30th Int. Conf. on Advances in Geographic Information Systems (SIGSPATIAL '22)*, 2022, doi: [10.1145/3557915.3560953](https://doi.org/10.1145/3557915.3560953).
+3. K. He, H. Fan, Y. Wu, S. Xie, and R. Girshick, "Momentum Contrast for Unsupervised Visual Representation Learning," in *IEEE/CVF Conf. on Computer Vision and Pattern Recognition (CVPR)*, 2020, arXiv: [1911.05722](https://arxiv.org/abs/1911.05722).
+4. D. Hendrycks and K. Gimpel, "A Baseline for Detecting Misclassified and Out-of-Distribution Examples in Neural Networks," in *Int. Conf. on Learning Representations (ICLR)*, 2017, arXiv: [1610.02136](https://arxiv.org/abs/1610.02136).
+
+
+### License
+This project is licensed under the MIT License.
